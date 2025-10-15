@@ -28,7 +28,7 @@ import threading
 # =============================
 
 # Рабочая директория проекта, где лежат docker-compose.yml, дампы и артефакты
-WORK_DIR = Path("/home/stfu/mattermost-migrate")
+WORK_DIR = Path("/home/stfu/livemaster_work/mattermost-migrate")
 
 # Путь к файлу docker-compose
 DOCKER_COMPOSE_FILE = WORK_DIR / "docker-compose.yml"
@@ -42,19 +42,9 @@ POSTGRES_FINAL_DUMP_DIR = WORK_DIR
 # Расположение и способ запуска migration-assist
 # Если у вас он доступен через toolbox как в гайде — оставьте по умолчанию.
 # Иначе укажите просто бинарь, например: MIGRATION_ASSIST_CMD = ["migration-assist"]
-#MIGRATION_ASSIST_CMD: List[str] = [
-#    "toolbox",
-#    "run",
-#    "-c",
-#    "work-stuff",
-#    "/home/stfu/go/bin/migration-assist",
-#]
-
-
 MIGRATION_ASSIST_CMD: List[str] = [
     "/home/stfu/go/bin/migration-assist",
 ]
-
 
 # Версия Mattermost для запуска миграций в PostgreSQL (используется migration-assist)
 MATTERMOST_VERSION = "v9.3"
@@ -99,6 +89,84 @@ PGLOADER_LOG_FILE = WORK_DIR / "pgloader.log"
 # Таймауты ожидания готовности контейнеров (секунды)
 MYSQL_READY_TIMEOUT_S = 600
 POSTGRES_READY_TIMEOUT_S = 600
+
+
+# =============================
+# Предстартовая подготовка окружения
+# =============================
+
+
+def _ensure_dir_exists_and_empty(dir_path: Path) -> None:
+    """Создаёт каталог, если отсутствует, и очищает его содержимое.
+
+    Удаляются только дочерние файлы/папки, сам каталог остаётся.
+    """
+    dir_path.mkdir(parents=True, exist_ok=True)
+    for child in dir_path.iterdir():
+        try:
+            if child.is_file() or child.is_symlink():
+                child.unlink(missing_ok=True)
+            else:
+                shutil.rmtree(child, ignore_errors=True)
+        except Exception as exc:  # noqa: BLE001
+            print(f"Предупреждение: не удалось удалить {child}: {exc}")
+
+
+def _cleanup_pgloader_artifacts() -> None:
+    """Удаляет мусорные артефакты pgloader (лог и конфиг)."""
+    for path in (PGLOADER_LOG_FILE, PGLOADER_LOAD_FILE):
+        try:
+            if path.exists():
+                path.unlink()
+        except Exception as exc:  # noqa: BLE001
+            print(f"Предупреждение: не удалось удалить {path}: {exc}")
+
+
+def _check_migration_assist_available() -> None:
+    """Проверяет доступность `migration-assist` согласно MIGRATION_ASSIST_CMD.
+
+    Стратегия: пробуем запустить команду с флагом помощи. Если отсутствует бинарь
+    или обёртка (например, `toolbox`), будет FileNotFoundError.
+    """
+    print("Проверка наличия migration-assist...")
+
+    # Если используется toolbox — проверим, что он доступен в PATH
+    if MIGRATION_ASSIST_CMD and MIGRATION_ASSIST_CMD[0] == "toolbox":
+        if shutil.which("toolbox") is None:
+            raise FileNotFoundError(
+                "Не найден 'toolbox'. Установите его или скорректируйте MIGRATION_ASSIST_CMD"
+            )
+
+    try:
+        proc = subprocess.Popen(
+            [*MIGRATION_ASSIST_CMD, "--help"],
+            cwd=str(WORK_DIR),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        # Сам факт успешного запуска процесса достаточен для проверки наличия
+        proc.wait(timeout=10)
+    except FileNotFoundError as exc:
+        # Прямая проверка бинаря в PATH (на случай MIGRATION_ASSIST_CMD = ["migration-assist"]) 
+        if shutil.which("migration-assist") is None:
+            raise FileNotFoundError(
+                f"Не найден 'migration-assist'. Проверьте установку или MIGRATION_ASSIST_CMD: {' '.join(MIGRATION_ASSIST_CMD)}"
+            ) from exc
+    except Exception:
+        # Команда могла вернуть ненулевой код (usage), но бинарь существует — это приемлемо
+        pass
+
+
+def preflight_housekeeping() -> None:
+    """Предстартовая подготовка: каталог postgres, очистка артефактов, проверка migration-assist."""
+    # 1) Создать и очистить каталог postgres/
+    _ensure_dir_exists_and_empty(WORK_DIR / "postgres")
+
+    # 2) Удалить мусорные файлы pgloader
+    _cleanup_pgloader_artifacts()
+
+    # 3) Проверить наличие migration-assist
+    _check_migration_assist_available()
 
 
 # =============================
@@ -898,6 +966,9 @@ def main() -> None:
     print("=== Mattermost: миграция Percona 5.7 -> PostgreSQL 13 ===")
     print(f"Рабочая директория: {WORK_DIR}")
     print(f"Docker Compose файл: {DOCKER_COMPOSE_FILE}")
+
+    # Предстартовая подготовка: postgres/, артефакты pgloader, migration-assist
+    preflight_housekeeping()
 
     # Ранний аудит существующих томов: предложить очистку перед стартом
     existing_vols = detect_existing_project_volumes()
