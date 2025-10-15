@@ -14,26 +14,33 @@
 
 1.  **Docker** и **Docker Compose** (v1 или v2).
 2.  **Python** 3.10+.
-3.  **Go** (для установки `migration-assist`).
-4.  Утилита **`migration-assist`**:
+3.  **Go** версии 1.24 или новее.
+4.  Утилита **`migration-assist`** от Mattermost. Установите её командой:
     ```bash
     go install github.com/mattermost/migration-assist/cmd/migration-assist@latest
     ```
+5.  **Рабочая папка** должна содержать:
+    - `mattermost.sql` — ваш исходный дамп базы данных MySQL 5.7.
+    - папку `postgres` — с `.sql` файлами миграций схемы Mattermost. Это необходимо как запасной вариант, если `migration-assist` не сможет применить их автоматически.
 
 ## 1. Подготовка
 
+**Важно:** Перед запуском откройте файл `migrate.py` и переопределите переменные `WORK_DIR` (путь к рабочей папке) и `MIGRATION_ASSIST_CMD` (способ запуска утилиты миграции) в соответствии с вашим окружением.
+
 1.  **Поместите дамп в проект**: Положите ваш дамп базы данных MySQL 5.7 в рабочую директорию и назовите его `mattermost.sql`.
 
-2.  **Настройте скрипт**: Откройте `migrate.py` и отредактируйте блок конфигурации под ваше окружение.
+2.  **Настройте скрипт**: Отредактируйте блок конфигурации в `migrate.py`.
     - **`WORK_DIR`**: Укажите абсолютный путь к директории проекта.
     - **`MIGRATION_ASSIST_CMD`**: **Самый важный параметр.** Укажите, как запускать `migration-assist`.
-      - Если утилита установлена глобально и доступна в `PATH`:
+      - Если утилита установлена глобально и доступна в `PATH`, используйте: `MIGRATION_ASSIST_CMD = ["migration-assist"]`.
+      - Если бинарный файл лежит по определённому пути, укажите его полностью:
         ```python
-        MIGRATION_ASSIST_CMD = ["migration-assist"]
-        ```
-      - Если вы используете Fedora Silverblue/Workstation с `toolbox` (как в примере по умолчанию):
-        ```python
-        MIGRATION_ASSIST_CMD = ["toolbox", "run", "-c", "my-container", "/path/to/migration-assist"]
+        # Расположение и способ запуска migration-assist
+        # Если у вас он доступен через toolbox как в гайде — оставьте по умолчанию.
+        # Иначе укажите просто бинарь, например: MIGRATION_ASSIST_CMD = ["migration-assist"]
+        MIGRATION_ASSIST_CMD: List[str] = [
+            "/root/go/bin/migration-assist",
+        ]
         ```
     - **`MATTERMOST_VERSION`**: Укажите версию Mattermost, для которой будут применены миграции схемы в PostgreSQL (например, `v9.3`).
 
@@ -43,3 +50,10 @@
 
 ```bash
 python3 migrate.py
+```
+
+## Результат
+
+На выходе в рабочей директории будет создан SQL-дамп для PostgreSQL 13, содержащий данные Mattermost версии 9.3.
+
+**Этот дамп готов к импорту в PostgreSQL версий 13, 14, 15, 16 и 17.**
