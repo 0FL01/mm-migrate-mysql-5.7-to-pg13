@@ -1,17 +1,45 @@
-How its works?
+# Скрипт для миграции Mattermost с MySQL на PostgreSQL
 
-Install go 1.24
+Этот скрипт полностью автоматизирует процесс миграции базы данных Mattermost с **Percona 5.7** (MySQL) на **PostgreSQL 13**. Он использует Docker для создания изолированного окружения и утилиту `migration-assist` от Mattermost для корректной подготовки схемы и данных.
 
-Install migration agent
+## Ключевые особенности
 
-`go install github.com/mattermost/migration-assist/cmd/migration-assist@latest`
+- **Полная автоматизация**: От запуска баз данных до создания финального дампа.
+- **Изолированное окружение**: Все операции происходят внутри Docker-контейнеров, не затрагивая вашу основную систему.
+- **Оптимизация производительности**: Конфигурации баз данных и `pgloader` настроены для максимальной скорости миграции (отключен fsync, увеличены буферы).
+- **Надёжность**: Скрипт ожидает полной готовности баз данных (healthchecks) и проверяет лог `pgloader` на наличие ошибок.
+- **Интерактивность**: Перед запуском скрипт обнаружит остатки предыдущих миграций (Docker volumes) и предложит их удалить.
 
-setup environment in migrate.py for your setup
+## Требования
 
-place mattermost.sql from mysql 5.7 to work dir
+1.  **Docker** и **Docker Compose** (v1 или v2).
+2.  **Python** 3.10+.
+3.  **Go** (для установки `migration-assist`).
+4.  Утилита **`migration-assist`**:
+    ```bash
+    go install github.com/mattermost/migration-assist/cmd/migration-assist@latest
+    ```
 
-prepare docker-compose.yml (script use docker enviroment)
+## 1. Подготовка
 
-run `python3 migrate.py` and wait
+1.  **Поместите дамп в проект**: Положите ваш дамп базы данных MySQL 5.7 в рабочую директорию и назовите его `mattermost.sql`.
 
-you get dump mattermost.sql prepare to import in postgres13
+2.  **Настройте скрипт**: Откройте `migrate.py` и отредактируйте блок конфигурации под ваше окружение.
+    - **`WORK_DIR`**: Укажите абсолютный путь к директории проекта.
+    - **`MIGRATION_ASSIST_CMD`**: **Самый важный параметр.** Укажите, как запускать `migration-assist`.
+      - Если утилита установлена глобально и доступна в `PATH`:
+        ```python
+        MIGRATION_ASSIST_CMD = ["migration-assist"]
+        ```
+      - Если вы используете Fedora Silverblue/Workstation с `toolbox` (как в примере по умолчанию):
+        ```python
+        MIGRATION_ASSIST_CMD = ["toolbox", "run", "-c", "my-container", "/path/to/migration-assist"]
+        ```
+    - **`MATTERMOST_VERSION`**: Укажите версию Mattermost, для которой будут применены миграции схемы в PostgreSQL (например, `v9.3`).
+
+## 2. Запуск
+
+Выполните команду из рабочей директории:
+
+```bash
+python3 migrate.py
