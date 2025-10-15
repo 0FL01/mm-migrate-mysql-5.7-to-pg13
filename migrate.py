@@ -42,13 +42,19 @@ POSTGRES_FINAL_DUMP_DIR = WORK_DIR
 # Расположение и способ запуска migration-assist
 # Если у вас он доступен через toolbox как в гайде — оставьте по умолчанию.
 # Иначе укажите просто бинарь, например: MIGRATION_ASSIST_CMD = ["migration-assist"]
+#MIGRATION_ASSIST_CMD: List[str] = [
+#    "toolbox",
+#    "run",
+#    "-c",
+#    "work-stuff",
+#    "/home/stfu/go/bin/migration-assist",
+#]
+
+
 MIGRATION_ASSIST_CMD: List[str] = [
-    "toolbox",
-    "run",
-    "-c",
-    "work-stuff",
     "/home/stfu/go/bin/migration-assist",
 ]
+
 
 # Версия Mattermost для запуска миграций в PostgreSQL (используется migration-assist)
 MATTERMOST_VERSION = "v9.3"
