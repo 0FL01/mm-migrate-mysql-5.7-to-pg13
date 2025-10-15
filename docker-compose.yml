@@ -1,0 +1,96 @@
+services:
+  percona:
+    image: percona:5.7
+    container_name: percona_mattermost
+    restart: unless-stopped
+    volumes:
+      #- ./percona_data:/var/lib/mysql
+      - percona_data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: 'pass'
+    networks:
+      - mattermost-migrate-network
+    ports:
+      - "127.0.0.1:3306:3306"
+    command:
+      - '--character-set-server=utf8mb4'
+      - '--collation-server=utf8mb4_unicode_ci'
+      - '--innodb_flush_log_at_trx_commit=0'
+      - '--innodb_doublewrite=0'
+      - '--innodb_buffer_pool_size=3G'
+      - '--innodb_log_file_size=512M'
+      - '--innodb_log_files_in_group=2'
+      - '--innodb_flush_method=O_DIRECT'
+      - '--innodb_page_cleaners=4'
+      - '--net_read_timeout=3600'
+      - '--net_write_timeout=3600'
+      - '--interactive_timeout=28800'
+      - '--wait_timeout=28800'
+      - '--max_allowed_packet=1G'
+      - '--max_connections=500'
+      - '--innodb_lock_wait_timeout=120'
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s  
+
+  postgres:
+    image: postgres:13
+    container_name: postgres_mattermost
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mmuser
+      POSTGRES_PASSWORD: mmuserpass
+      POSTGRES_DB: mattermost
+      TZ: Europe/Moscow
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - mattermost-migrate-network
+    ports:
+      - "127.0.0.1:5432:5432"
+    command:
+      - "postgres"
+      - "-c"
+      - "fsync=off"
+      - "-c"
+      - "synchronous_commit=off"
+      - "-c"
+      - "full_page_writes=off"
+      - "-c"
+      - "max_wal_size=4GB"
+      - "-c"
+      - "maintenance_work_mem=2GB"
+      - "-c"
+      - "shared_buffers=4GB"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "statement_timeout=0"
+      - "-c"
+      - "lock_timeout=0"
+      - "-c"
+      - "idle_in_transaction_session_timeout=0"
+      - "-c"
+      - "tcp_keepalives_idle=300"
+      - "-c"
+      - "tcp_keepalives_interval=30"
+      - "-c"
+      - "tcp_keepalives_count=9"   
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mmuser -d mattermost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  percona_data:
+  pg_data:
+
+networks:
+  mattermost-migrate-network:
+    driver: bridge
